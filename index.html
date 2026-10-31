@@ -166,6 +166,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .field input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 1.4rem; font-weight: 700; padding: 4px 0; font-variant-numeric: tabular-nums; outline: none; }
 .field input::placeholder { color: var(--muted); font-weight: 400; font-size: 1rem; }
 .field .hint { font-size: .75rem; color: var(--muted); }
+.field.wide { grid-column: 1 / -1; }
+.fields-note { grid-column: 1 / -1; font-size: .75rem; color: var(--muted); margin-top: -4px; }
 .hero { position: relative; border-radius: 16px; overflow: hidden; background: var(--accent-soft); }
 .hero img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; object-position: center 40%; }
 .hero .shade { position: absolute; inset: auto 0 0 0; padding: 40px 16px 14px; background: linear-gradient(to top, rgba(20,12,18,.72), rgba(20,12,18,0)); color: #fff; display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
@@ -185,7 +187,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 <div class="wrap">
   <header>
     <h1>リングフィット運動記録</h1>
-    <p>毎日の運動時間、リングフィットの起動、消費カロリー、体重を記録します。最低ラインは5分。</p>
+    <p>毎日の運動時間、リングフィットの起動、消費カロリー、走行距離、体重を記録します。最低ラインは5分。</p>
   </header>
 
   <div class="hero" id="hero" hidden>
@@ -249,9 +251,13 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       <div class="field">
         <label class="label" for="kcal">消費カロリー</label>
         <div class="box"><input id="kcal" type="number" inputmode="decimal" min="0" max="2000" step="0.01" placeholder="例 42.5"><span class="unit">kcal</span></div>
-        <span class="hint">リングフィット終了時の画面の数字</span>
       </div>
       <div class="field">
+        <label class="label" for="dist">走行距離</label>
+        <div class="box"><input id="dist" type="number" inputmode="decimal" min="0" max="100" step="0.01" placeholder="例 0.85"><span class="unit">km</span></div>
+      </div>
+      <p class="fields-note">消費カロリーと走行距離は、リングフィット終了時の画面の数字を写します。</p>
+      <div class="field wide">
         <label class="label" for="weight">体重</label>
         <div class="box"><input id="weight" type="number" inputmode="decimal" min="30" max="150" step="0.1" placeholder="例 55.8"><span class="unit">kg</span></div>
         <span class="hint">朝、トイレの後に測る</span>
@@ -274,7 +280,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       <div class="stat"><span class="label">運動した日</span><b class="num" id="wDays">0<small>日</small></b></div>
       <div class="stat"><span class="label">連続記録</span><b class="num" id="streak">0<small>日</small></b></div>
       <div class="stat"><span class="label">合計時間</span><b class="num" id="wMin">0<small>分</small></b></div>
+      <div class="stat"><span class="label">リングフィット</span><b class="num" id="wRing">0<small>日</small></b></div>
       <div class="stat"><span class="label">消費カロリー</span><b class="num" id="wKcal">0<small>kcal</small></b></div>
+      <div class="stat"><span class="label">走行距離</span><b class="num" id="wDist">0<small>km</small></b></div>
     </div>
     <div>
       <div class="label" id="goalLabel">週の目標 3日</div>
@@ -369,7 +377,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 
   function loadDraft() {
     const r = logs[sel];
-    draft = r ? { ring: r.ring === true ? true : r.ring === false ? false : null, minutes: r.minutes||0, kcal: num(r.kcal), weight: num(r.weight), memo: r.memo||"" } : { ring: null, minutes: 0, kcal: null, weight: null, memo: "" };
+    draft = r ? { ring: r.ring === true ? true : r.ring === false ? false : null, minutes: r.minutes||0, kcal: num(r.kcal), dist: num(r.dist), weight: num(r.weight), memo: r.memo||"" } : { ring: null, minutes: 0, kcal: null, dist: null, weight: null, memo: "" };
     dirty = false;
     renderEntry();
   }
@@ -382,6 +390,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     if (document.activeElement !== $("minutes")) $("minutes").value = draft.minutes;
     if (document.activeElement !== $("memo")) $("memo").value = draft.memo;
     if (document.activeElement !== $("kcal")) $("kcal").value = draft.kcal ?? "";
+    if (document.activeElement !== $("dist")) $("dist").value = draft.dist ?? "";
     if (document.activeElement !== $("weight")) $("weight").value = draft.weight ?? "";
     $("clear").hidden = !logs[sel];
     $("save").textContent = logs[sel] ? "更新する" : "保存する";
@@ -409,8 +418,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 
   function renderWeek() {
     const mon = mondayOf(new Date());
-    let days = 0, mins = 0, kc = 0;
-    for (let i = 0; i < 7; i++) { const r = logs[ymd(addDays(mon, i))]; if (active(r)) days++; mins += (r && r.minutes) || 0; kc += (r && num(r.kcal)) || 0; }
+    let days = 0, mins = 0, kc = 0, km = 0, rd = 0;
+    for (let i = 0; i < 7; i++) { const r = logs[ymd(addDays(mon, i))]; if (active(r)) days++; if (r && r.ring) rd++; mins += (r && r.minutes) || 0; kc += (r && num(r.kcal)) || 0; km += (r && num(r.dist)) || 0; }
+    $("wDist").innerHTML = `${(Math.round(km*100)/100).toFixed(km >= 10 ? 1 : 2)}<small>km</small>`;
+    $("wRing").innerHTML = `${rd}<small>日</small>`;
     $("wKcal").innerHTML = `${Math.round(kc).toLocaleString()}<small>kcal</small>`;
     $("wDays").innerHTML = `${days}<small>日</small>`;
     $("wMin").innerHTML = `${mins}<small>分</small>`;
@@ -431,7 +442,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     const first = new Date(y, m, 1); const lead = (first.getDay()+6)%7;
     for (let i = 0; i < lead; i++) { const b = document.createElement("div"); b.className = "day blank"; cal.appendChild(b); }
     const last = new Date(y, m+1, 0).getDate(); const t = todayStr();
-    let sumMin = 0, sumDays = 0, ringDays = 0, sumKcal = 0;
+    let sumMin = 0, sumDays = 0, ringDays = 0, sumKcal = 0, sumKm = 0;
     for (let d = 1; d <= last; d++) {
       const s = `${y}-${pad(m+1)}-${pad(d)}`; const r = logs[s];
       const b = document.createElement("button");
@@ -442,9 +453,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       b.setAttribute("aria-label", `${m+1}月${d}日 ${r ? (mins + "分" + (r.ring ? "・リングフィット起動" : "")) : "記録なし"}`);
       if (s > t) b.disabled = true; else b.addEventListener("click", () => { sel = s; loadDraft(); renderCal(); $("entry-title").scrollIntoView({ behavior: "smooth", block: "start" }); });
       cal.appendChild(b);
-      if (active(r)) sumDays++; if (r && r.ring) ringDays++; sumMin += mins; sumKcal += (r && num(r.kcal)) || 0;
+      if (active(r)) sumDays++; if (r && r.ring) ringDays++; sumMin += mins; sumKcal += (r && num(r.kcal)) || 0; sumKm += (r && num(r.dist)) || 0;
     }
-    $("monthSum").textContent = `この月：運動 ${sumDays}日・リングフィット ${ringDays}日・合計 ${sumMin}分・${Math.round(sumKcal).toLocaleString()}kcal`;
+    $("monthSum").textContent = `この月：運動 ${sumDays}日・リングフィット ${ringDays}日・合計 ${sumMin}分・${Math.round(sumKcal).toLocaleString()}kcal・${(Math.round(sumKm*100)/100).toFixed(sumKm >= 10 ? 1 : 2)}km`;
   }
 
   function renderChart() {
@@ -543,6 +554,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       const parts = [];
       if (r.ring !== null && r.ring !== undefined || r.minutes) parts.push(`${r.minutes||0}分`);
       if (num(r.kcal) !== null) parts.push(`${r.kcal}kcal`);
+      if (num(r.dist) !== null) parts.push(`${r.dist}km`);
       if (num(r.weight) !== null) parts.push(`${r.weight.toFixed(1)}kg`);
       const strong = document.createElement("strong"); strong.className = "num"; strong.style.color = "var(--ink)"; strong.textContent = parts.join("・");
       b.appendChild(strong); if (r.memo) b.appendChild(document.createTextNode("　" + r.memo));
@@ -585,6 +597,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
   $("memo").oninput = e => { draft.memo = e.target.value; dirty = true; };
   const readNum = (el, lo, hi, dp) => { const t = el.value.trim().replace(",", "."); if (t === "") return null; const v = parseFloat(t); if (!isFinite(v) || v < lo || v > hi) return undefined; const f = Math.pow(10, dp); return Math.round(v * f) / f; };
   $("kcal").oninput = () => { dirty = true; };
+  $("dist").oninput = () => { dirty = true; };
   $("weight").oninput = () => { dirty = true; };
   $("prevDay").onclick = () => { sel = ymd(addDays(parse(sel), -1)); syncMonth(); loadDraft(); renderCal(); setStatus(""); };
   $("nextDay").onclick = () => { if (sel < todayStr()) { sel = ymd(addDays(parse(sel), 1)); syncMonth(); loadDraft(); renderCal(); setStatus(""); } };
@@ -609,12 +622,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     const kc = readNum($("kcal"), 0, 2000, 2), wt = readNum($("weight"), 30, 150, 1);
     if (kc === undefined) { setStatus("消費カロリーは0〜2000の数字で入れてください", "err"); $("kcal").focus(); return; }
     if (wt === undefined) { setStatus("体重は30〜150の数字で入れてください（例 55.8）", "err"); $("weight").focus(); return; }
-    draft.kcal = kc; draft.weight = wt;
-    const exercised = draft.minutes > 0 || (kc || 0) > 0;
+    const km = readNum($("dist"), 0, 100, 2);
+    if (km === undefined) { setStatus("走行距離は0〜100の数字で入れてください（例 0.85）", "err"); $("dist").focus(); return; }
+    draft.kcal = kc; draft.dist = km; draft.weight = wt;
+    const exercised = draft.minutes > 0 || (kc || 0) > 0 || (km || 0) > 0;
     if (draft.ring === null && exercised) { setStatus("「起動した」か「起動していない」を選んでください", "err"); return; }
     if (draft.ring === null && wt === null && !draft.memo.trim()) { setStatus("運動か体重のどちらかを入れてください", "err"); return; }
     const prev = logs[sel];
-    logs[sel] = { date: sel, ring: draft.ring, minutes: draft.minutes, kcal: kc, weight: wt, memo: draft.memo.trim(), updatedAt: new Date().toISOString() };
+    logs[sel] = { date: sel, ring: draft.ring, minutes: draft.minutes, kcal: kc, dist: km, weight: wt, memo: draft.memo.trim(), updatedAt: new Date().toISOString() };
     if (!writeStore()) {
       if (prev) logs[sel] = prev; else delete logs[sel];
       $("offline").hidden = false; setStatus("保存できませんでした", "err"); return;
@@ -692,7 +707,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       const obj = JSON.parse($("bkText").value.trim());
       const src = obj && obj.logs ? obj.logs : obj;
       let n = 0;
-      Object.keys(src).forEach(k => { const r = src[k]; if (/^\d{4}-\d{2}-\d{2}$/.test(k) && r && typeof r === "object") { logs[k] = { date: k, ring: r.ring === true ? true : r.ring === false ? false : null, minutes: Math.max(0, Math.min(300, +r.minutes || 0)), kcal: num(r.kcal), weight: num(r.weight), memo: String(r.memo || "").slice(0, 80), updatedAt: r.updatedAt || new Date().toISOString() }; n++; } });
+      Object.keys(src).forEach(k => { const r = src[k]; if (/^\d{4}-\d{2}-\d{2}$/.test(k) && r && typeof r === "object") { logs[k] = { date: k, ring: r.ring === true ? true : r.ring === false ? false : null, minutes: Math.max(0, Math.min(300, +r.minutes || 0)), kcal: num(r.kcal), dist: num(r.dist), weight: num(r.weight), memo: String(r.memo || "").slice(0, 80), updatedAt: r.updatedAt || new Date().toISOString() }; n++; } });
       if (!n) throw new Error("empty");
       writeStore(); loadDraft(); renderAll();
       st.textContent = `${n}日分の記録を復元しました`; st.className = "status ok"; $("bkText").value = "";
