@@ -170,7 +170,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .hero img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; object-position: center 40%; }
 .hero .shade { position: absolute; inset: auto 0 0 0; padding: 40px 16px 14px; background: linear-gradient(to top, rgba(20,12,18,.72), rgba(20,12,18,0)); color: #fff; display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
 .hero .shade b { font-family: var(--font-display); font-size: 1.25rem; line-height: 1.3; display: block; }
-.hero .shade span { font-size: .8rem; opacity: .9; }
+.hero .shade span { font-size: .8rem; opacity: .9; display: block; }
+.hero .shade .kicker { font-size: .72rem; letter-spacing: .08em; opacity: .85; margin-bottom: 2px; }
+.hero .shade { padding-top: 56px; }
 .hero .edit { position: absolute; top: 10px; right: 10px; padding: 6px 12px; border-radius: 999px; border: 0; background: rgba(20,12,18,.55); color: #fff; font: inherit; font-size: .78rem; cursor: pointer; }
 .photo-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1.5px dashed var(--line); border-radius: 14px; padding: 14px 16px; color: var(--muted); font-size: .88rem; }
 .photo-menu { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -187,9 +189,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
   </header>
 
   <div class="hero" id="hero" hidden>
-    <img id="heroImg" alt="ふたりの写真">
+    <img id="heroImg" alt="目指す日の写真">
     <button class="edit" id="photoEdit">写真を変更</button>
-    <div class="shade"><div><b id="heroMsg">6月末、48kgへ</b><span id="heroSub"></span></div></div>
+    <div class="shade"><div><span class="kicker">目指すのは、この日</span><b id="heroMsg">あの日の私に、会いに行く</b><span id="heroSub"></span></div></div>
   </div>
   <div class="photo-menu" id="photoMenu" hidden>
     <button class="btn2" id="photoChange">別の写真にする</button>
@@ -197,7 +199,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     <button class="ghost" id="photoCancel">閉じる</button>
   </div>
   <div class="photo-empty" id="photoEmpty">
-    <span>好きな写真を設定すると、毎回ここに表示されます。写真はこのiPhoneの中だけに保存され、ネットには公開されません。</span>
+    <span>目指したい日の写真（結婚式の写真など）を設定すると、開くたびにここに表示されます。写真はこのiPhoneの中だけに保存され、ネットには公開されません。</span>
     <button class="btn2" id="photoAdd">写真を設定</button>
   </div>
   <input type="file" id="photoFile" accept="image/*" hidden>
@@ -556,12 +558,15 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     if (!has) { $("photoMenu").hidden = true; return; }
     if ($("heroImg").src !== photo) $("heroImg").src = photo;
     const ser = weightSeries();
-    if (!ser.length) { $("heroMsg").textContent = "6月末、48kgへ"; $("heroSub").textContent = "今日の記録から始めよう"; return; }
+    const kicker = $("hero").querySelector(".kicker");
+    if (!ser.length) { kicker.textContent = "目指すのは、この日"; $("heroMsg").textContent = "あの日の私に、会いに行く"; $("heroSub").textContent = "6月末、48kgへ。今日の記録から始めよう"; return; }
     const a = avg7(ser, todayStr()) ?? ser.at(-1).w;
     const left = a - GOAL_W;
-    $("heroMsg").textContent = left <= 0 ? "目標の48kgに到達！" : `48kgまで あと${left.toFixed(1)}kg`;
     const d = ser.at(-1).w - ser[0].w;
-    $("heroSub").textContent = d < 0 ? `記録を始めてから −${Math.abs(d).toFixed(1)}kg` : "7日平均で見ていこう";
+    if (left <= 0) { kicker.textContent = "目指したのは、この日"; $("heroMsg").textContent = "あの日の私に、会えた"; $("heroSub").textContent = `48kg 達成${d < 0 ? `・記録を始めてから −${Math.abs(d).toFixed(1)}kg` : ""}`; return; }
+    kicker.textContent = "目指すのは、この日";
+    $("heroMsg").textContent = "あの日の私に、会いに行く";
+    $("heroSub").textContent = `48kgまで あと${left.toFixed(1)}kg` + (d < 0 ? `・ここまで −${Math.abs(d).toFixed(1)}kg` : "");
   }
 
   function renderAll() { renderHero(); renderEntry(); renderWeek(); renderWeight(); renderCal(); renderChart(); renderHist(); }
