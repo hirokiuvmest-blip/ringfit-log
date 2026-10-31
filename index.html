@@ -166,6 +166,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .field input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 1.4rem; font-weight: 700; padding: 4px 0; font-variant-numeric: tabular-nums; outline: none; }
 .field input::placeholder { color: var(--muted); font-weight: 400; font-size: 1rem; }
 .field .hint { font-size: .75rem; color: var(--muted); }
+.hero { position: relative; border-radius: 16px; overflow: hidden; background: var(--accent-soft); }
+.hero img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; object-position: center 40%; }
+.hero .shade { position: absolute; inset: auto 0 0 0; padding: 40px 16px 14px; background: linear-gradient(to top, rgba(20,12,18,.72), rgba(20,12,18,0)); color: #fff; display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.hero .shade b { font-family: var(--font-display); font-size: 1.25rem; line-height: 1.3; display: block; }
+.hero .shade span { font-size: .8rem; opacity: .9; }
+.hero .edit { position: absolute; top: 10px; right: 10px; padding: 6px 12px; border-radius: 999px; border: 0; background: rgba(20,12,18,.55); color: #fff; font: inherit; font-size: .78rem; cursor: pointer; }
+.photo-empty { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; border: 1.5px dashed var(--line); border-radius: 14px; padding: 14px 16px; color: var(--muted); font-size: .88rem; }
+.photo-menu { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .stats.two { grid-template-columns: 1fr 1fr; row-gap: 14px; }
 .delta-down { color: var(--ok); }
 .delta-up { color: var(--warn); }
@@ -177,6 +185,23 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     <h1>リングフィット運動記録</h1>
     <p>毎日の運動時間、リングフィットの起動、消費カロリー、体重を記録します。最低ラインは5分。</p>
   </header>
+
+  <div class="hero" id="hero" hidden>
+    <img id="heroImg" alt="ふたりの写真">
+    <button class="edit" id="photoEdit">写真を変更</button>
+    <div class="shade"><div><b id="heroMsg">6月末、48kgへ</b><span id="heroSub"></span></div></div>
+  </div>
+  <div class="photo-menu" id="photoMenu" hidden>
+    <button class="btn2" id="photoChange">別の写真にする</button>
+    <button class="btn2" id="photoRemove">写真を外す</button>
+    <button class="ghost" id="photoCancel">閉じる</button>
+  </div>
+  <div class="photo-empty" id="photoEmpty">
+    <span>好きな写真を設定すると、毎回ここに表示されます。写真はこのiPhoneの中だけに保存され、ネットには公開されません。</span>
+    <button class="btn2" id="photoAdd">写真を設定</button>
+  </div>
+  <input type="file" id="photoFile" accept="image/*" hidden>
+  <span class="status" id="photoStatus" role="status"></span>
 
   <div class="offline" id="offline" hidden>このブラウザでは記録を保存できません。プライベートブラウズをオフにして開いてください。</div>
   <div class="offline" id="installTip" hidden>Safariの共有ボタン（□に↑）→「ホーム画面に追加」で、アプリのように1タップで開けます。ホーム画面から開くと記録が消えにくくなります。</div>
@@ -300,7 +325,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 
   <section class="panel backup" aria-labelledby="bk-title">
     <h2 id="bk-title">バックアップ</h2>
-    <p class="note">記録はこのiPhoneの中だけに保存されています。月に1回くらい「バックアップをコピー」を押して、メモ帳やLINEの自分宛てに貼り付けておくと安心です。機種変更のときは、新しいiPhoneでここに貼り付けて「復元する」を押してください。</p>
+    <p class="note">記録はこのiPhoneの中だけに保存されています（写真はバックアップに含まれないので、機種変更のときは設定し直してください）。月に1回くらい「バックアップをコピー」を押して、メモ帳やLINEの自分宛てに貼り付けておくと安心です。機種変更のときは、新しいiPhoneでここに貼り付けて「復元する」を押してください。</p>
     <div class="row">
       <button class="btn2" id="bkCopy">バックアップをコピー</button>
       <button class="btn2" id="bkFile">ファイルに保存</button>
@@ -525,7 +550,21 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     });
   }
 
-  function renderAll() { renderEntry(); renderWeek(); renderWeight(); renderCal(); renderChart(); renderHist(); }
+  function renderHero() {
+    const has = !!photo;
+    $("hero").hidden = !has; $("photoEmpty").hidden = has;
+    if (!has) { $("photoMenu").hidden = true; return; }
+    if ($("heroImg").src !== photo) $("heroImg").src = photo;
+    const ser = weightSeries();
+    if (!ser.length) { $("heroMsg").textContent = "6月末、48kgへ"; $("heroSub").textContent = "今日の記録から始めよう"; return; }
+    const a = avg7(ser, todayStr()) ?? ser.at(-1).w;
+    const left = a - GOAL_W;
+    $("heroMsg").textContent = left <= 0 ? "目標の48kgに到達！" : `48kgまで あと${left.toFixed(1)}kg`;
+    const d = ser.at(-1).w - ser[0].w;
+    $("heroSub").textContent = d < 0 ? `記録を始めてから −${Math.abs(d).toFixed(1)}kg` : "7日平均で見ていこう";
+  }
+
+  function renderAll() { renderHero(); renderEntry(); renderWeek(); renderWeight(); renderCal(); renderChart(); renderHist(); }
 
   function setStatus(t, cls) { const s = $("status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
 
@@ -581,6 +620,39 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     if ($("clear").dataset.confirm !== "1") { $("clear").dataset.confirm = "1"; $("clear").textContent = "もう一度押すと消します"; return; }
     $("clear").dataset.confirm = ""; $("clear").textContent = "この日の記録を消す";
     delete logs[sel]; writeStore(); loadDraft(); renderAll(); setStatus("消しました", "ok");
+  };
+
+  // ---- 写真（このiPhoneの中だけ） ----
+  const PKEY = "ringfit-log-photo";
+  let photo = null;
+  try { photo = localStorage.getItem(PKEY); } catch (e) {}
+  const pMsg = (t, cls) => { const e = $("photoStatus"); e.textContent = t; e.className = "status" + (cls ? " " + cls : ""); };
+  const pickPhoto = () => { $("photoFile").value = ""; $("photoFile").click(); };
+  $("photoAdd").onclick = pickPhoto;
+  $("photoChange").onclick = pickPhoto;
+  $("photoEdit").onclick = () => { $("photoMenu").hidden = !$("photoMenu").hidden; };
+  $("photoCancel").onclick = () => { $("photoMenu").hidden = true; };
+  $("photoRemove").onclick = () => {
+    if ($("photoRemove").dataset.confirm !== "1") { $("photoRemove").dataset.confirm = "1"; $("photoRemove").textContent = "もう一度押すと外します"; return; }
+    $("photoRemove").dataset.confirm = ""; $("photoRemove").textContent = "写真を外す";
+    try { localStorage.removeItem(PKEY); } catch (e) {}
+    photo = null; $("photoMenu").hidden = true; renderHero(); pMsg("");
+  };
+  $("photoFile").onchange = e => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    pMsg("写真を読み込み中…");
+    const url = URL.createObjectURL(f); const img = new Image();
+    img.onload = () => {
+      const max = 1200, sc = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      let data = c.toDataURL("image/jpeg", 0.82);
+      try { localStorage.setItem(PKEY, data); }
+      catch (err) { data = c.toDataURL("image/jpeg", 0.6); try { localStorage.setItem(PKEY, data); } catch (err2) { pMsg("写真を保存できませんでした。別の写真で試してください", "err"); return; } }
+      photo = data; $("photoMenu").hidden = true; renderHero(); pMsg("写真を設定しました", "ok"); setTimeout(() => pMsg(""), 2500);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); pMsg("この写真は読み込めませんでした。別の写真を選んでください", "err"); };
+    img.src = url;
   };
 
   // ---- バックアップ ----
