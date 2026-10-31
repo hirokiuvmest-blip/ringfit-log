@@ -159,13 +159,23 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 .btn2:hover { border-color: var(--accent); }
 .backup textarea { width: 100%; min-height: 90px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font: 12px/1.4 ui-monospace, Menlo, monospace; background: var(--surface); color: var(--ink); }
 .note { font-size: .82rem; color: var(--muted); margin: 0; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field .box { display: flex; align-items: baseline; gap: 6px; border: 1px solid var(--line); border-radius: 12px; padding: 6px 12px; background: var(--surface); }
+.field .box:focus-within { border-color: var(--accent); }
+.field input { width: 100%; min-width: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 1.4rem; font-weight: 700; padding: 4px 0; font-variant-numeric: tabular-nums; outline: none; }
+.field input::placeholder { color: var(--muted); font-weight: 400; font-size: 1rem; }
+.field .hint { font-size: .75rem; color: var(--muted); }
+.stats.two { grid-template-columns: 1fr 1fr; row-gap: 14px; }
+.delta-down { color: var(--ok); }
+.delta-up { color: var(--warn); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>リングフィット運動記録</h1>
-    <p>毎日の運動時間と、リングフィットを起動したかを記録します。最低ラインは5分。</p>
+    <p>毎日の運動時間、リングフィットの起動、消費カロリー、体重を記録します。最低ラインは5分。</p>
   </header>
 
   <div class="offline" id="offline" hidden>このブラウザでは記録を保存できません。プライベートブラウズをオフにして開いてください。</div>
@@ -208,6 +218,19 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       </div>
     </div>
 
+    <div class="fields">
+      <div class="field">
+        <label class="label" for="kcal">消費カロリー</label>
+        <div class="box"><input id="kcal" type="number" inputmode="decimal" min="0" max="2000" step="0.01" placeholder="例 42.5"><span class="unit">kcal</span></div>
+        <span class="hint">リングフィット終了時の画面の数字</span>
+      </div>
+      <div class="field">
+        <label class="label" for="weight">体重</label>
+        <div class="box"><input id="weight" type="number" inputmode="decimal" min="30" max="150" step="0.1" placeholder="例 55.8"><span class="unit">kg</span></div>
+        <span class="hint">朝、トイレの後に測る</span>
+      </div>
+    </div>
+
     <input id="memo" class="memo" type="text" maxlength="80" placeholder="メモ（任意）例：昼寝中にサイレントモードで1ステージ">
 
     <div class="save-row">
@@ -220,15 +243,28 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 
   <section class="panel" aria-labelledby="week-title">
     <h2 id="week-title">今週（月〜日）</h2>
-    <div class="stats">
+    <div class="stats two">
       <div class="stat"><span class="label">運動した日</span><b class="num" id="wDays">0<small>日</small></b></div>
-      <div class="stat"><span class="label">合計時間</span><b class="num" id="wMin">0<small>分</small></b></div>
       <div class="stat"><span class="label">連続記録</span><b class="num" id="streak">0<small>日</small></b></div>
+      <div class="stat"><span class="label">合計時間</span><b class="num" id="wMin">0<small>分</small></b></div>
+      <div class="stat"><span class="label">消費カロリー</span><b class="num" id="wKcal">0<small>kcal</small></b></div>
     </div>
     <div>
       <div class="label" id="goalLabel">週の目標 3日</div>
       <div class="meter" style="margin-top:6px"><i id="goalBar" style="width:0%"></i></div>
     </div>
+  </section>
+
+  <section class="panel" aria-labelledby="wt-title">
+    <h2 id="wt-title">体重</h2>
+    <div class="stats two">
+      <div class="stat"><span class="label">7日平均</span><b class="num" id="wtAvg">–</b></div>
+      <div class="stat"><span class="label">目標 48kg まで</span><b class="num" id="wtToGoal">–</b></div>
+      <div class="stat"><span class="label">最新</span><b class="num" id="wtLast">–</b></div>
+      <div class="stat"><span class="label">記録開始から</span><b class="num" id="wtDelta">–</b></div>
+    </div>
+    <svg class="chart" id="wtChart" viewBox="0 0 360 190" role="img" aria-label="直近60日の体重の推移"></svg>
+    <p class="note" id="wtNote">体重を記録すると、ここに推移が表示されます。日々の上下は水分の変動なので、7日平均（太線）で判断します。</p>
   </section>
 
   <section class="panel" aria-labelledby="cal-title">
@@ -299,12 +335,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
   let logs = {};          // date -> {date, minutes, ring, memo}
   let sel = todayStr();
   let calMonth = new Date(); calMonth.setDate(1);
-  let draft = { ring: null, minutes: 0, memo: "" };
+  let draft = { ring: null, minutes: 0, kcal: null, weight: null, memo: "" };
+  const num = v => (typeof v === "number" && isFinite(v)) ? v : null;
+  const GOAL_W = 48;
   let dirty = false;
 
   function loadDraft() {
     const r = logs[sel];
-    draft = r ? { ring: !!r.ring, minutes: r.minutes||0, memo: r.memo||"" } : { ring: null, minutes: 0, memo: "" };
+    draft = r ? { ring: r.ring === true ? true : r.ring === false ? false : null, minutes: r.minutes||0, kcal: num(r.kcal), weight: num(r.weight), memo: r.memo||"" } : { ring: null, minutes: 0, kcal: null, weight: null, memo: "" };
     dirty = false;
     renderEntry();
   }
@@ -316,6 +354,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     $("ringNo").setAttribute("aria-pressed", draft.ring === false);
     if (document.activeElement !== $("minutes")) $("minutes").value = draft.minutes;
     if (document.activeElement !== $("memo")) $("memo").value = draft.memo;
+    if (document.activeElement !== $("kcal")) $("kcal").value = draft.kcal ?? "";
+    if (document.activeElement !== $("weight")) $("weight").value = draft.weight ?? "";
     $("clear").hidden = !logs[sel];
     $("save").textContent = logs[sel] ? "更新する" : "保存する";
     renderNudge();
@@ -342,8 +382,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
 
   function renderWeek() {
     const mon = mondayOf(new Date());
-    let days = 0, mins = 0;
-    for (let i = 0; i < 7; i++) { const r = logs[ymd(addDays(mon, i))]; if (active(r)) days++; mins += (r && r.minutes) || 0; }
+    let days = 0, mins = 0, kc = 0;
+    for (let i = 0; i < 7; i++) { const r = logs[ymd(addDays(mon, i))]; if (active(r)) days++; mins += (r && r.minutes) || 0; kc += (r && num(r.kcal)) || 0; }
+    $("wKcal").innerHTML = `${Math.round(kc).toLocaleString()}<small>kcal</small>`;
     $("wDays").innerHTML = `${days}<small>日</small>`;
     $("wMin").innerHTML = `${mins}<small>分</small>`;
     $("streak").innerHTML = `${streak()}<small>日</small>`;
@@ -363,7 +404,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     const first = new Date(y, m, 1); const lead = (first.getDay()+6)%7;
     for (let i = 0; i < lead; i++) { const b = document.createElement("div"); b.className = "day blank"; cal.appendChild(b); }
     const last = new Date(y, m+1, 0).getDate(); const t = todayStr();
-    let sumMin = 0, sumDays = 0, ringDays = 0;
+    let sumMin = 0, sumDays = 0, ringDays = 0, sumKcal = 0;
     for (let d = 1; d <= last; d++) {
       const s = `${y}-${pad(m+1)}-${pad(d)}`; const r = logs[s];
       const b = document.createElement("button");
@@ -374,9 +415,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       b.setAttribute("aria-label", `${m+1}月${d}日 ${r ? (mins + "分" + (r.ring ? "・リングフィット起動" : "")) : "記録なし"}`);
       if (s > t) b.disabled = true; else b.addEventListener("click", () => { sel = s; loadDraft(); renderCal(); $("entry-title").scrollIntoView({ behavior: "smooth", block: "start" }); });
       cal.appendChild(b);
-      if (active(r)) sumDays++; if (r && r.ring) ringDays++; sumMin += mins;
+      if (active(r)) sumDays++; if (r && r.ring) ringDays++; sumMin += mins; sumKcal += (r && num(r.kcal)) || 0;
     }
-    $("monthSum").textContent = `この月：運動 ${sumDays}日・リングフィット ${ringDays}日・合計 ${sumMin}分`;
+    $("monthSum").textContent = `この月：運動 ${sumDays}日・リングフィット ${ringDays}日・合計 ${sumMin}分・${Math.round(sumKcal).toLocaleString()}kcal`;
   }
 
   function renderChart() {
@@ -409,6 +450,61 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
     svg.innerHTML = s;
   }
 
+  function weightSeries() {
+    return Object.keys(logs).sort().filter(k => num(logs[k].weight) !== null).map(k => ({ date: k, w: logs[k].weight }));
+  }
+  function avg7(series, dateStr) {
+    const end = parse(dateStr), start = addDays(end, -6);
+    const xs = series.filter(p => { const d = parse(p.date); return d >= start && d <= end; }).map(p => p.w);
+    return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  }
+  const kg = v => `${v.toFixed(1)}<small>kg</small>`;
+  function renderWeight() {
+    const ser = weightSeries();
+    $("wtNote").hidden = ser.length >= 2;
+    if (!ser.length) {
+      ["wtAvg","wtToGoal","wtLast","wtDelta"].forEach(id => $(id).textContent = "–");
+      $("wtChart").innerHTML = ""; $("wtChart").style.display = "none"; return;
+    }
+    const last = ser.at(-1), first = ser[0];
+    const a = avg7(ser, todayStr()) ?? avg7(ser, last.date);
+    $("wtAvg").innerHTML = a !== null ? kg(a) : "–";
+    $("wtLast").innerHTML = `${last.w.toFixed(1)}<small>kg ${fmt(last.date).replace(/（.）/, "")}</small>`;
+    const base = a !== null ? a : last.w;
+    $("wtToGoal").innerHTML = base <= GOAL_W ? `達成` : kg(base - GOAL_W);
+    const d = last.w - first.w;
+    $("wtDelta").innerHTML = `<span class="${d < 0 ? "delta-down" : d > 0 ? "delta-up" : ""}">${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d).toFixed(1)}</span><small>kg</small>`;
+
+    // chart: last 60 days
+    const svg = $("wtChart"); svg.style.display = "";
+    const W = 360, H = 190, L = 34, R = 12, T = 14, B = 26;
+    const end = new Date(); const start = addDays(end, -59);
+    const pts = ser.filter(p => parse(p.date) >= start);
+    if (!pts.length) { svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle">直近60日の記録がありません</text>`; return; }
+    const vals = pts.map(p => p.w).concat([GOAL_W]);
+    let lo = Math.floor(Math.min(...vals) - 0.5), hi = Math.ceil(Math.max(...vals) + 0.5);
+    if (hi - lo < 4) hi = lo + 4;
+    const step = (hi - lo) <= 6 ? 1 : 2;
+    const x = d => L + (parse(d) - start) / (end - start) * (W - L - R);
+    const y = v => T + (hi - v) / (hi - lo) * (H - T - B);
+    let s = "";
+    for (let v = lo; v <= hi; v += step) {
+      s += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/>`;
+      s += `<text x="${L-6}" y="${y(v)+4}" text-anchor="end">${v}</text>`;
+    }
+    s += `<line x1="${L}" x2="${W-R}" y1="${y(GOAL_W)}" y2="${y(GOAL_W)}" stroke="var(--ok)" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+    s += `<text x="${W-R}" y="${y(GOAL_W)-5}" text-anchor="end" style="fill:var(--ok)">目標 ${GOAL_W}kg</text>`;
+    for (let i = 0; i <= 2; i++) { const d = addDays(start, i * 29.5); s += `<text x="${x(ymd(d))}" y="${H-8}" text-anchor="${i === 0 ? "start" : i === 2 ? "end" : "middle"}">${d.getMonth()+1}/${d.getDate()}</text>`; }
+    pts.forEach(p => { s += `<circle cx="${x(p.date)}" cy="${y(p.w)}" r="2.6" fill="var(--heat2)"><title>${fmt(p.date)}：${p.w.toFixed(1)}kg</title></circle>`; });
+    const avgPts = pts.map(p => ({ date: p.date, v: avg7(ser, p.date) }));
+    if (avgPts.length >= 2) s += `<path d="${avgPts.map((p, i) => `${i ? "L" : "M"}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+    const lp = avgPts.at(-1);
+    s += `<circle cx="${x(lp.date)}" cy="${y(lp.v)}" r="4" fill="var(--accent)"/>`;
+    s += `<text class="val" x="${Math.min(x(lp.date), W-R-4)}" y="${y(lp.v)-9}" text-anchor="end">${lp.v.toFixed(1)}</text>`;
+    s += `<text x="${L}" y="10">kg</text>`;
+    svg.innerHTML = s;
+  }
+
   function renderHist() {
     const list = $("hist"); list.innerHTML = "";
     const keys = Object.keys(logs).sort().reverse().slice(0, 14);
@@ -417,14 +513,19 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       const r = logs[k]; const li = document.createElement("li");
       const a = document.createElement("span"); a.className = "num"; a.textContent = fmt(k);
       const b = document.createElement("span"); b.className = "memo-t";
-      const strong = document.createElement("strong"); strong.className = "num"; strong.style.color = "var(--ink)"; strong.textContent = `${r.minutes||0}分`;
+      const parts = [];
+      if (r.ring !== null && r.ring !== undefined || r.minutes) parts.push(`${r.minutes||0}分`);
+      if (num(r.kcal) !== null) parts.push(`${r.kcal}kcal`);
+      if (num(r.weight) !== null) parts.push(`${r.weight.toFixed(1)}kg`);
+      const strong = document.createElement("strong"); strong.className = "num"; strong.style.color = "var(--ink)"; strong.textContent = parts.join("・");
       b.appendChild(strong); if (r.memo) b.appendChild(document.createTextNode("　" + r.memo));
-      const c = document.createElement("span"); c.className = "pill" + (r.ring ? " on" : ""); c.textContent = r.ring ? "リングフィット" : "その他";
+      const c = document.createElement("span"); c.className = "pill" + (r.ring ? " on" : "");
+      c.textContent = r.ring ? "リングフィット" : r.ring === false || r.minutes ? "その他" : "体重のみ";
       li.append(a, b, c); list.appendChild(li);
     });
   }
 
-  function renderAll() { renderEntry(); renderWeek(); renderCal(); renderChart(); renderHist(); }
+  function renderAll() { renderEntry(); renderWeek(); renderWeight(); renderCal(); renderChart(); renderHist(); }
 
   function setStatus(t, cls) { const s = $("status"); s.textContent = t; s.className = "status" + (cls ? " " + cls : ""); }
 
@@ -438,6 +539,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
   $("minutes").onblur = () => { $("minutes").value = draft.minutes; };
   document.querySelectorAll(".chips button").forEach(b => b.onclick = () => setMin(+b.dataset.min));
   $("memo").oninput = e => { draft.memo = e.target.value; dirty = true; };
+  const readNum = (el, lo, hi, dp) => { const t = el.value.trim().replace(",", "."); if (t === "") return null; const v = parseFloat(t); if (!isFinite(v) || v < lo || v > hi) return undefined; const f = Math.pow(10, dp); return Math.round(v * f) / f; };
+  $("kcal").oninput = () => { dirty = true; };
+  $("weight").oninput = () => { dirty = true; };
   $("prevDay").onclick = () => { sel = ymd(addDays(parse(sel), -1)); syncMonth(); loadDraft(); renderCal(); setStatus(""); };
   $("nextDay").onclick = () => { if (sel < todayStr()) { sel = ymd(addDays(parse(sel), 1)); syncMonth(); loadDraft(); renderCal(); setStatus(""); } };
   $("prevMonth").onclick = () => { calMonth.setMonth(calMonth.getMonth()-1); renderCal(); };
@@ -458,9 +562,15 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
 
   $("save").onclick = () => {
-    if (draft.ring === null) { setStatus("「起動した」か「起動していない」を選んでください", "err"); return; }
+    const kc = readNum($("kcal"), 0, 2000, 2), wt = readNum($("weight"), 30, 150, 1);
+    if (kc === undefined) { setStatus("消費カロリーは0〜2000の数字で入れてください", "err"); $("kcal").focus(); return; }
+    if (wt === undefined) { setStatus("体重は30〜150の数字で入れてください（例 55.8）", "err"); $("weight").focus(); return; }
+    draft.kcal = kc; draft.weight = wt;
+    const exercised = draft.minutes > 0 || (kc || 0) > 0;
+    if (draft.ring === null && exercised) { setStatus("「起動した」か「起動していない」を選んでください", "err"); return; }
+    if (draft.ring === null && wt === null && !draft.memo.trim()) { setStatus("運動か体重のどちらかを入れてください", "err"); return; }
     const prev = logs[sel];
-    logs[sel] = { date: sel, ring: draft.ring, minutes: draft.minutes, memo: draft.memo.trim(), updatedAt: new Date().toISOString() };
+    logs[sel] = { date: sel, ring: draft.ring, minutes: draft.minutes, kcal: kc, weight: wt, memo: draft.memo.trim(), updatedAt: new Date().toISOString() };
     if (!writeStore()) {
       if (prev) logs[sel] = prev; else delete logs[sel];
       $("offline").hidden = false; setStatus("保存できませんでした", "err"); return;
@@ -505,7 +615,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); ou
       const obj = JSON.parse($("bkText").value.trim());
       const src = obj && obj.logs ? obj.logs : obj;
       let n = 0;
-      Object.keys(src).forEach(k => { const r = src[k]; if (/^\d{4}-\d{2}-\d{2}$/.test(k) && r && typeof r === "object") { logs[k] = { date: k, ring: !!r.ring, minutes: Math.max(0, Math.min(300, +r.minutes || 0)), memo: String(r.memo || "").slice(0, 80), updatedAt: r.updatedAt || new Date().toISOString() }; n++; } });
+      Object.keys(src).forEach(k => { const r = src[k]; if (/^\d{4}-\d{2}-\d{2}$/.test(k) && r && typeof r === "object") { logs[k] = { date: k, ring: r.ring === true ? true : r.ring === false ? false : null, minutes: Math.max(0, Math.min(300, +r.minutes || 0)), kcal: num(r.kcal), weight: num(r.weight), memo: String(r.memo || "").slice(0, 80), updatedAt: r.updatedAt || new Date().toISOString() }; n++; } });
       if (!n) throw new Error("empty");
       writeStore(); loadDraft(); renderAll();
       st.textContent = `${n}日分の記録を復元しました`; st.className = "status ok"; $("bkText").value = "";
